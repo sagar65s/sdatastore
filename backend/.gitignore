@@ -1,0 +1,17 @@
+node_modules
+dist
+.DS_Store
+.env
+server/public
+vite.config.ts.*
+*.tar.gz
+node_modules
+.env
+.env.local
+.env.production
+dist
+build
+coverage
+*.log
+.DS_Store
+.vscode
