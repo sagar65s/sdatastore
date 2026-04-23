@@ -4,7 +4,6 @@ import { ImageIcon, Plus, Upload, Download, Trash2, ArrowLeft, X, ZoomIn } from 
 import toast from 'react-hot-toast';
 import API, { fmt, dlFile } from '../utils/api';
 
-
 // ✅ FIX: Build full image URL using backend base URL
 const imgURL = (url) => {
   if (!url) return '';
@@ -24,20 +23,22 @@ export default function Images() {
   const [newName, setNewName] = useState('');
   const [lightbox, setLightbox] = useState(null);
   const [lbIdx, setLbIdx] = useState(0);
+  const [imgErrors, setImgErrors] = useState({});
   const imgRef = useRef();
 
   const loadAlbums = async () => {
     setLoading(true);
     try { setAlbums((await API.get('/images/albums')).data); }
-    catch { toast.error('Failed to load album '); }
+    catch { toast.error('Failed to load albums'); }
     finally { setLoading(false); }
   };
   useEffect(() => { loadAlbums(); }, []);
 
   const openView = async (album) => {
     setOpenAlbum(album);
+    setImgErrors({});
     try { setAlbumImgs((await API.get('/images', { params:{ albumId:album._id } })).data); }
-    catch { toast.error('Failed to load image'); }
+    catch { toast.error('Failed to load images'); }
   };
 
   const createAlbum = async () => {
@@ -45,7 +46,7 @@ export default function Images() {
     try {
       const r = await API.post('/images/albums', { name:newName });
       setAlbums(p => [{ ...r.data, imageCount:0 }, ...p]);
-      toast.success('Album created'); setShowNew(false); setNewName('');
+      toast.success('Album created ✅'); setShowNew(false); setNewName('');
     } catch { toast.error('Failed'); }
   };
 
@@ -58,15 +59,15 @@ export default function Images() {
       if (openAlbum) fd.append('albumId', openAlbum._id);
       const r = await API.post('/images/upload', fd);
       setAlbumImgs(p => [...r.data, ...p]);
-      toast.success(`${r.data.length} image${r.data.length>1?'s':''} uploaded`);
-    } catch { toast.error('Failed'); }
+      toast.success(`${r.data.length} image${r.data.length>1?'s':''} uploaded 🖼️`);
+    } catch { toast.error('Upload failed'); }
     finally { setUploading(false); }
   };
 
   const download = async (img) => {
     setDlId(img._id);
-    try { await dlFile(`/api/images/download/${img._id}`, img.originalName); toast.success('Downloaded'); }
-    catch { toast.error('Failed'); } finally { setDlId(null); }
+    try { await dlFile(`/api/images/download/${img._id}`, img.originalName); toast.success('Downloaded ✅'); }
+    catch { toast.error('Download failed'); } finally { setDlId(null); }
   };
 
   const deleteImg = async (id) => {
@@ -83,13 +84,25 @@ export default function Images() {
     catch { toast.error('Failed'); }
   };
 
-  const lbPrev = () => { const i=(lbIdx-1+albumImgs.length)%albumImgs.length; setLightbox(albumImgs[i]); setLbIdx(i); };
-  const lbNext = () => { const i=(lbIdx+1)%albumImgs.length; setLightbox(albumImgs[i]); setLbIdx(i); };
+  const lbPrev = (e) => { e.stopPropagation(); const i=(lbIdx-1+albumImgs.length)%albumImgs.length; setLightbox(albumImgs[i]); setLbIdx(i); };
+  const lbNext = (e) => { e.stopPropagation(); const i=(lbIdx+1)%albumImgs.length; setLightbox(albumImgs[i]); setLbIdx(i); };
+
+  // Keyboard nav for lightbox
+  useEffect(() => {
+    if (!lightbox) return;
+    const h = (e) => {
+      if (e.key === 'ArrowLeft') lbPrev(e);
+      if (e.key === 'ArrowRight') lbNext(e);
+      if (e.key === 'Escape') setLightbox(null);
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [lightbox, lbIdx, albumImgs]);
 
   if (openAlbum) return (
     <div>
       <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:24, flexWrap:'wrap' }}>
-        <motion.button className="btn btn-ghost" onClick={() => setOpenAlbum(null)} whileTap={{ scale:0.93 }} style={{ padding:'8px 12px' }}>
+        <motion.button className="btn btn-ghost" onClick={() => { setOpenAlbum(null); setAlbumImgs([]); }} whileTap={{ scale:0.93 }} style={{ padding:'8px 12px' }}>
           <ArrowLeft size={15}/>
         </motion.button>
         <ImageIcon size={20} color="var(--em)"/>
@@ -109,7 +122,7 @@ export default function Images() {
           <motion.div animate={{ scale:[1,1.08,1] }} transition={{ repeat:Infinity, duration:2.5 }}>
             <ImageIcon size={48} color="rgba(52,211,153,0.15)"/>
           </motion.div>
-          <p style={{ color:'var(--text3)', marginTop:14 }}>No images yet</p>
+          <p style={{ color:'var(--text3)', marginTop:14 }}>No images yet — click Add Images to upload</p>
         </div>
       ) : (
         <div className="grid-images">
@@ -120,9 +133,22 @@ export default function Images() {
                 exit={{ opacity:0, scale:0.8 }} transition={{ delay:i*0.04, type:'spring', stiffness:220 }}>
                 <div style={{ position:'relative', paddingTop:'72%', background:'var(--bg3)', overflow:'hidden', cursor:'pointer' }}
                   onClick={() => { setLightbox(img); setLbIdx(i); }}>
-                  <img src={img.fileURL} alt={img.title} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', transition:'transform 0.35s' }}
-                    onMouseEnter={e => e.target.style.transform='scale(1.08)'}
-                    onMouseLeave={e => e.target.style.transform='scale(1)'}/>
+                  {imgErrors[img._id] ? (
+                    /* Fallback if image fails to load */
+                    <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:6 }}>
+                      <ImageIcon size={28} color="rgba(167,139,250,0.3)"/>
+                      <span style={{ fontSize:10, color:'var(--text3)' }}>Preview unavailable</span>
+                    </div>
+                  ) : (
+                    <img
+                      src={imgURL(img.fileURL)}
+                      alt={img.title}
+                      style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', transition:'transform 0.35s' }}
+                      onMouseEnter={e => e.target.style.transform='scale(1.08)'}
+                      onMouseLeave={e => e.target.style.transform='scale(1)'}
+                      onError={() => setImgErrors(p => ({ ...p, [img._id]: true }))}
+                    />
+                  )}
                   <div className="img-ov">
                     <ZoomIn size={22} color="#fff" className="zic"/>
                   </div>
@@ -150,18 +176,21 @@ export default function Images() {
       {/* Lightbox */}
       <AnimatePresence>
         {lightbox && (
-          <motion.div className="overlay" initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }} onClick={() => setLightbox(null)}>
+          <motion.div className="overlay" initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }} onClick={() => setLightbox(null)}
+            style={{ display:'flex', alignItems:'center', justifyContent:'center' }}>
             <motion.div initial={{ scale:0.82, opacity:0 }} animate={{ scale:1, opacity:1 }} exit={{ scale:0.82, opacity:0 }}
               style={{ maxWidth:'92vw', maxHeight:'92vh', borderRadius:18, overflow:'hidden', background:'var(--bg-3)', border:'1px solid rgba(52,211,153,0.15)', boxShadow:'0 32px 80px rgba(0,0,0,0.7)' }}
               onClick={e => e.stopPropagation()}>
-              <div style={{ position:'relative' }}>
-                <motion.img key={lightbox._id} src={lightbox.fileURL} alt={lightbox.title}
+              <div style={{ position:'relative', background:'#000', display:'flex', alignItems:'center', justifyContent:'center', minHeight:200 }}>
+                <motion.img key={lightbox._id} src={imgURL(lightbox.fileURL)} alt={lightbox.title}
                   initial={{ opacity:0, scale:0.96 }} animate={{ opacity:1, scale:1 }}
-                  style={{ maxWidth:'90vw', maxHeight:'76vh', display:'block', objectFit:'contain' }}/>
+                  style={{ maxWidth:'90vw', maxHeight:'76vh', display:'block', objectFit:'contain' }}
+                  onError={e => { e.target.style.display='none'; }}
+                />
                 {albumImgs.length > 1 && (
                   <>
-                    <button onClick={lbPrev} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', background:'rgba(0,0,0,0.5)', border:'1px solid var(--border)', color:'var(--text)', borderRadius:9, padding:'10px 14px', cursor:'pointer', fontSize:20, backdropFilter:'blur(8px)' }}>‹</button>
-                    <button onClick={lbNext} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'rgba(0,0,0,0.5)', border:'1px solid var(--border)', color:'var(--text)', borderRadius:9, padding:'10px 14px', cursor:'pointer', fontSize:20, backdropFilter:'blur(8px)' }}>›</button>
+                    <button onClick={lbPrev} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', background:'rgba(0,0,0,0.6)', border:'1px solid var(--border)', color:'#fff', borderRadius:9, padding:'10px 16px', cursor:'pointer', fontSize:22, backdropFilter:'blur(8px)', lineHeight:1 }}>‹</button>
+                    <button onClick={lbNext} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'rgba(0,0,0,0.6)', border:'1px solid var(--border)', color:'#fff', borderRadius:9, padding:'10px 16px', cursor:'pointer', fontSize:22, backdropFilter:'blur(8px)', lineHeight:1 }}>›</button>
                   </>
                 )}
               </div>
@@ -211,6 +240,7 @@ export default function Images() {
             <ImageIcon size={56} color="rgba(167,139,250,0.2)"/>
           </motion.div>
           <p style={{ color:'var(--text3)', fontWeight:500, marginTop:16 }}>No albums yet</p>
+          <p style={{ color:'var(--text3)', fontSize:12, marginTop:6 }}>Click "New Album" to create one</p>
         </div>
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:14 }}>
@@ -220,9 +250,10 @@ export default function Images() {
               <div style={{ height:150, position:'relative', background:a.coverURL?'var(--bg3)':'linear-gradient(135deg,var(--bg3),var(--space-mid))', cursor:'pointer', overflow:'hidden' }}
                 onClick={() => openView(a)}>
                 {a.coverURL
-                  ? <img src={a.coverURL} alt={a.name} style={{ width:'100%', height:'100%', objectFit:'cover', transition:'transform 0.4s' }}
+                  ? <img src={imgURL(a.coverURL)} alt={a.name} style={{ width:'100%', height:'100%', objectFit:'cover', transition:'transform 0.4s' }}
                       onMouseEnter={e => e.target.style.transform='scale(1.1)'}
-                      onMouseLeave={e => e.target.style.transform='scale(1)'}/>
+                      onMouseLeave={e => e.target.style.transform='scale(1)'}
+                      onError={e => { e.target.style.display='none'; }}/>
                   : <ImageIcon size={36} color="rgba(167,139,250,0.3)" style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)' }}/>
                 }
                 <div style={{ position:'absolute', bottom:8, right:8 }}>
@@ -251,7 +282,7 @@ export default function Images() {
               <input className="inp" placeholder="Album name" value={newName} onChange={e => setNewName(e.target.value)}
                 onKeyDown={e => e.key==='Enter' && createAlbum()} autoFocus style={{ marginBottom:20 }}/>
               <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
-                <button className="btn btn-ghost" onClick={() => setShowNew(false)}>Cancel</button>
+                <button className="btn btn-ghost" onClick={() => { setShowNew(false); setNewName(''); }}>Cancel</button>
                 <button className="btn btn-em" onClick={createAlbum}>Create</button>
               </div>
             </motion.div>
