@@ -1,17 +1,20 @@
-node_modules
-dist
-.DS_Store
-.env
-server/public
-vite.config.ts.*
-*.tar.gz
-node_modules
+# Environment variables — NEVER commit these
 .env
 .env.local
 .env.production
-dist
-build
-coverage
+
+# Dependencies
+node_modules/
+
+# Uploaded files (store in cloud storage for production)
+uploads/files/*
+uploads/images/*
+!uploads/.gitkeep
+
+# Logs
 *.log
+npm-debug.log*
+
+# OS files
 .DS_Store
-.vscode
+Thumbs.db

@@ -1,6 +1,13 @@
 import axios from 'axios';
 
-const API = axios.create({ baseURL: '/api' });
+// ✅ RENDER FIX: In production, React's proxy doesn't work.
+// Set REACT_APP_API_URL in Render frontend env vars to your backend URL.
+// Example: https://myvault-backend.onrender.com
+const BASE_URL = process.env.REACT_APP_API_URL
+  ? `${process.env.REACT_APP_API_URL}/api`
+  : '/api'; // fallback for local dev (proxy works locally)
+
+const API = axios.create({ baseURL: BASE_URL });
 
 API.interceptors.request.use(cfg => {
   const t = localStorage.getItem('mv_token');
@@ -9,6 +16,19 @@ API.interceptors.request.use(cfg => {
   if (v) cfg.headers['x-vault-token'] = v;
   return cfg;
 });
+
+// ✅ Auto-logout on 401 (token expired/invalid)
+API.interceptors.response.use(
+  res => res,
+  err => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem('mv_token');
+      localStorage.removeItem('mv_vault');
+      window.location.href = '/login';
+    }
+    return Promise.reject(err);
+  }
+);
 
 export default API;
 
@@ -45,7 +65,10 @@ export const fileIcon = (mime, name) => {
 };
 
 export const dlFile = async (url, filename, onProg) => {
-  const res = await fetch(url, {
+  const fullUrl = process.env.REACT_APP_API_URL
+    ? `${process.env.REACT_APP_API_URL}${url}`
+    : url;
+  const res = await fetch(fullUrl, {
     headers: {
       'x-auth-token': localStorage.getItem('mv_token') || '',
       'x-vault-token': localStorage.getItem('mv_vault') || ''

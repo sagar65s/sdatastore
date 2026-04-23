@@ -35,18 +35,28 @@ export default function Dashboard() {
   const [data, setData] = useState(null);
   const [recentItems, setRecentItems] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [loadErr, setLoadErr] = useState(false);
   const nav = useNavigate();
 
   useEffect(() => {
-    API.get('/dashboard/stats').then(r => {
-      setData(r.data);
-      // Store recent with unique ids for deletion
-      const items = (r.data.recentActivity || r.data.recent || []).map((item, i) => ({
-        ...item,
-        _uid: `${item.type}-${i}-${Date.now()}`
-      }));
-      setRecentItems(items);
-    }).catch(() => {});
+    setLoadErr(false);
+    API.get('/dashboard/stats')
+      .then(r => {
+        setData(r.data);
+        const items = (r.data.recentActivity || r.data.recent || []).map((item, i) => ({
+          ...item,
+          _uid: `${item.type}-${i}-${Date.now()}`
+        }));
+        setRecentItems(items);
+      })
+      .catch(err => {
+        // ✅ FIX: Show error state instead of infinite loading
+        if (err.response?.status !== 401) {
+          setLoadErr(true);
+          setData({ stats: { files:0, folders:0, images:0, notes:0, passwords:0, trash:0 }, storage: { files:0, images:0 } });
+          setRecentItems([]);
+        }
+      });
   }, []);
 
   const handleDeleteActivity = async (item) => {
