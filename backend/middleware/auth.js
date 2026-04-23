@@ -26,7 +26,9 @@ const sessions = new Set(), vaultSessions = new Set();
 function genToken() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
 function requireAuth(req, res, next) {
-  if (!sessions.has(req.headers['x-auth-token'])) return res.status(401).json({ error: 'Unauthorized' });
+  // Accept token from header OR query param (query param needed for blob fetch in browser)
+  const token = req.headers['x-auth-token'] || req.query.token;
+  if (!sessions.has(token)) return res.status(401).json({ error: 'Unauthorized' });
   next();
 }
 function requireVault(req, res, next) {
