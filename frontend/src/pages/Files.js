@@ -4,13 +4,12 @@ import { Upload, Download, Trash2, Search, FileText, RefreshCw, X, Eye } from 'l
 import toast from 'react-hot-toast';
 import API, { fmt, fileIcon, dlFile } from '../utils/api';
 
-// ✅ Always use the authenticated download endpoint for previewing
-// Direct /uploads/... paths fail on Render (cross-origin or missing auth)
-const previewURL = (fileId) => {
+// ✅ Build full URL for previewing files (images, PDFs)
+const fileURL = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
   const base = process.env.REACT_APP_API_URL || '';
-  const token = localStorage.getItem('mv_token') || '';
-  // Append token as query param so iframe/img/video can load with auth
-  return `${base}/api/files/download/${fileId}?token=${token}`;
+  return `${base}${url}`;
 };
 
 // Determine if a file can be previewed inline
@@ -27,46 +26,8 @@ const canPreview = (mime, name) => {
 
 function FilePreviewModal({ file, onClose }) {
   const [textContent, setTextContent] = useState(null);
-  const [blobUrl, setBlobUrl] = useState(null);
   const type = canPreview(file.mimeType, file.originalName);
-
-  // ✅ Fetch file as blob using auth headers — works for ALL file types
-  useEffect(() => {
-    if (!type || type === 'text') return;
-    const base = process.env.REACT_APP_API_URL || '';
-    fetch(`${base}/api/files/download/${file._id}`, {
-      headers: {
-        'x-auth-token': localStorage.getItem('mv_token') || '',
-        'x-vault-token': localStorage.getItem('mv_vault') || ''
-      }
-    })
-      .then(r => r.blob())
-      .then(blob => setBlobUrl(URL.createObjectURL(blob)))
-      .catch(() => setBlobUrl(null));
-    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
-  }, [file._id, type]);
-
-  useEffect(() => {
-    if (type === 'text') {
-      const base = process.env.REACT_APP_API_URL || '';
-      fetch(`${base}/api/files/download/${file._id}`, {
-        headers: {
-          'x-auth-token': localStorage.getItem('mv_token') || '',
-          'x-vault-token': localStorage.getItem('mv_vault') || ''
-        }
-      })
-        .then(r => r.text())
-        .then(setTextContent)
-        .catch(() => setTextContent('Could not load file content.'));
-    }
-  }, [file._id, type]);
-
-  // Cleanup blob URL on unmount
-  useEffect(() => {
-    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
-  }, [blobUrl]);
-
-  const url = blobUrl; // use blob URL for all media types
+  const url = fileURL(file.fileURL);
 
   useEffect(() => {
     if (type === 'text' && url) {
