@@ -1,5 +1,5 @@
 // DNS Fix for Node.js v22+ on Windows (MongoDB Atlas querySrv ECONNREFUSED)
-try { require('node:dns/promises').setServers(['1.1.1.1', '8.8.8.8', '1.0.0.1']); } catch(e) {}
+try { require('node:dns/promises').setServers(['1.1.1.1', '8.8.8.8', '1.0.0.1']); } catch (e) { }
 
 require('dotenv').config();
 const express = require('express');
@@ -22,7 +22,7 @@ console.log('✅ All required environment variables are set.');
 const app = express();
 
 // Ensure upload directories exist
-['files','folders','images'].forEach(dir => {
+['files', 'folders', 'images'].forEach(dir => {
   const p = path.join(__dirname, 'uploads', dir);
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 });
@@ -56,6 +56,9 @@ mongoose.connect(process.env.MONGODB_URI)
   .catch(err => console.error('❌ MongoDB error:', err.message));
 
 // Routes
+app.get("/health", (req, res) => {
+  res.send("OK");
+});
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/files', require('./routes/files'));
 app.use('/api/folders', require('./routes/folders'));
