@@ -4,6 +4,15 @@ import { ImageIcon, Plus, Upload, Download, Trash2, ArrowLeft, X, ZoomIn } from 
 import toast from 'react-hot-toast';
 import API, { fmt, dlFile } from '../utils/api';
 
+
+// ✅ FIX: Build full image URL using backend base URL
+const imgURL = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url; // already full URL
+  const base = process.env.REACT_APP_API_URL || '';
+  return `${base}${url}`;
+};
+
 export default function Images() {
   const [albums, setAlbums] = useState([]);
   const [openAlbum, setOpenAlbum] = useState(null);
@@ -20,7 +29,7 @@ export default function Images() {
   const loadAlbums = async () => {
     setLoading(true);
     try { setAlbums((await API.get('/images/albums')).data); }
-    catch { toast.error('Failed'); }
+    catch { toast.error('Failed to load album '); }
     finally { setLoading(false); }
   };
   useEffect(() => { loadAlbums(); }, []);
@@ -28,7 +37,7 @@ export default function Images() {
   const openView = async (album) => {
     setOpenAlbum(album);
     try { setAlbumImgs((await API.get('/images', { params:{ albumId:album._id } })).data); }
-    catch { toast.error('Failed'); }
+    catch { toast.error('Failed to load image'); }
   };
 
   const createAlbum = async () => {
