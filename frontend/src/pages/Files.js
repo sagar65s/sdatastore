@@ -4,12 +4,13 @@ import { Upload, Download, Trash2, Search, FileText, RefreshCw, X, Eye } from 'l
 import toast from 'react-hot-toast';
 import API, { fmt, fileIcon, dlFile } from '../utils/api';
 
-// ✅ Build full URL for previewing files (images, PDFs)
-const fileURL = (url) => {
-  if (!url) return '';
-  if (url.startsWith('http')) return url;
+// ✅ Always use the authenticated download endpoint for previewing
+// Direct /uploads/... paths fail on Render (cross-origin or missing auth)
+const previewURL = (fileId) => {
   const base = process.env.REACT_APP_API_URL || '';
-  return `${base}${url}`;
+  const token = localStorage.getItem('mv_token') || '';
+  // Append token as query param so iframe/img/video can load with auth
+  return `${base}/api/files/download/${fileId}?token=${token}`;
 };
 
 // Determine if a file can be previewed inline
@@ -26,8 +27,46 @@ const canPreview = (mime, name) => {
 
 function FilePreviewModal({ file, onClose }) {
   const [textContent, setTextContent] = useState(null);
+  const [blobUrl, setBlobUrl] = useState(null);
   const type = canPreview(file.mimeType, file.originalName);
-  const url = fileURL(file.fileURL);
+
+  // ✅ Fetch file as blob using auth headers — works for ALL file types
+  useEffect(() => {
+    if (!type || type === 'text') return;
+    const base = process.env.REACT_APP_API_URL || '';
+    fetch(`${base}/api/files/download/${file._id}`, {
+      headers: {
+        'x-auth-token': localStorage.getItem('mv_token') || '',
+        'x-vault-token': localStorage.getItem('mv_vault') || ''
+      }
+    })
+      .then(r => r.blob())
+      .then(blob => setBlobUrl(URL.createObjectURL(blob)))
+      .catch(() => setBlobUrl(null));
+    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
+  }, [file._id, type]);
+
+  useEffect(() => {
+    if (type === 'text') {
+      const base = process.env.REACT_APP_API_URL || '';
+      fetch(`${base}/api/files/download/${file._id}`, {
+        headers: {
+          'x-auth-token': localStorage.getItem('mv_token') || '',
+          'x-vault-token': localStorage.getItem('mv_vault') || ''
+        }
+      })
+        .then(r => r.text())
+        .then(setTextContent)
+        .catch(() => setTextContent('Could not load file content.'));
+    }
+  }, [file._id, type]);
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => { if (blobUrl) URL.revokeObjectURL(blobUrl); };
+  }, [blobUrl]);
+
+  const url = blobUrl; // use blob URL for all media types
 
   useEffect(() => {
     if (type === 'text' && url) {
@@ -96,29 +135,39 @@ function FilePreviewModal({ file, onClose }) {
         </div>
 
         {/* Preview body */}
-        <div style={{ flex: 1, overflow: 'auto', background: type === 'image' ? '#000' : 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {type === 'image' && (
+        <div style={{ flex: 1, overflow: 'auto', background: type === 'image' ? '#000' : 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
+
+          {/* Loading spinner — shown while blob is being fetched */}
+          {type && type !== 'text' && !url && (
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:14, padding:40 }}>
+              <div style={{ width:36, height:36, borderRadius:'50%', border:'3px solid rgba(0,245,212,0.15)', borderTopColor:'var(--em)', animation:'spin 0.8s linear infinite' }}/>
+              <span style={{ color:'var(--text3)', fontSize:13 }}>Loading preview…</span>
+              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+            </div>
+          )}
+
+          {type === 'image' && url && (
             <img
               src={url}
               alt={file.originalName}
               style={{ maxWidth: '100%', maxHeight: '72vh', objectFit: 'contain', display: 'block' }}
             />
           )}
-          {type === 'pdf' && (
+          {type === 'pdf' && url && (
             <iframe
               src={url}
               title={file.originalName}
               style={{ width: '100%', height: '72vh', border: 'none', background: '#fff' }}
             />
           )}
-          {type === 'video' && (
+          {type === 'video' && url && (
             <video
               src={url}
               controls
               style={{ maxWidth: '100%', maxHeight: '72vh', outline: 'none' }}
             />
           )}
-          {type === 'audio' && (
+          {type === 'audio' && url && (
             <div style={{ padding: 40, textAlign: 'center', width: '100%' }}>
               <div style={{ fontSize: 56, marginBottom: 20 }}>🎵</div>
               <div style={{ color: 'var(--text)', fontWeight: 600, marginBottom: 16 }}>{file.originalName}</div>
